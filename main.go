@@ -5,6 +5,7 @@ import (
 	"log"
 	"net/http"
 	"encoding/json"
+	"sync"
 )
 
 func handler(w http.ResponseWriter, r *http.Request) {
@@ -12,7 +13,10 @@ func handler(w http.ResponseWriter, r *http.Request) {
 	fmt.Fprintf(w, "Printing %s", r.URL.Path[1:])
 }
 
-var kvStore = make(map[string]string)
+var (
+	kvStore = make(map[string]string)
+	mu sync.RWMutex
+)
 
 func putKvStoreHandler(w http.ResponseWriter, r *http.Request) {
 	if r.Method != http.MethodPost{
@@ -21,7 +25,7 @@ func putKvStoreHandler(w http.ResponseWriter, r *http.Request) {
 	}
 	var data struct{
 		Key string `json:"key"`
-		Value string `json:"value`
+		Value string `json:"value"`
 	}
 	
 	err := json.NewDecoder(r.Body).Decode(&data);
@@ -31,11 +35,21 @@ func putKvStoreHandler(w http.ResponseWriter, r *http.Request) {
 	}
 	if data.Key == "" || data.Value == ""{
 		http.Error(w, "Either key or value is empty", http.StatusBadRequest);
+		return;
 	}
+	mu.Lock()
 	kvStore[data.Key] = data.Value;
-	
+	mu.Unlock();
+
 	log.Printf("Key : %v stored with value : %v", data.Key, data.Value)
-	fmt.Fprintf(w, "Key : %v stored with value : %v", data.Key, data.Value)
+	
+	response := struct{
+		Value string
+	}{
+		Value : fmt.Sprintf("Stored key %v successfully with value %v", data.Key, data.Value),
+	}
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(response);
 }
 
 func getKVStoreHandler(w http.ResponseWriter, r *http.Request) {
@@ -47,9 +61,10 @@ func getKVStoreHandler(w http.ResponseWriter, r *http.Request) {
 	if key == ""{
 		http.Error(w, "Key parameter empty", http.StatusBadRequest);
 	}
-	
-	val, exists := kvStore[key];
-	if !exists{
+	mu.RLock();
+	val,ok := kvStore[key];
+	mu.RUnlock();
+	if !ok{
 		http.Error(w,"{No record attached with key found}", http.StatusBadRequest);
 		return;
 	}
@@ -79,14 +94,22 @@ func deleteKVStoreHandler(w http.ResponseWriter, r *http.Request){
 		http.Error(w, "Key cannot be empty", http.StatusBadRequest);
 		return;
 	}
-	if _,ok := kvStore[data.Key]; !ok{
-		http.Error(w, "Cannot delete if key does not exist", http.StatusNotFound);
-		return;
-	}
+	log.Printf("Recieved delete request for key : ", data.Key);
+
+	mu.Lock()
 	delete(kvStore, data.Key);
+	mu.Unlock()
+
 	log.Printf("Key Deleted successfully %v", data.Key);
-	fmt.Fprintf(w, "Deleted key %v from map successfully", data.Key);
+	response := struct {
+		Data string
+	}{
+		Data: "Deleted Successfully!",
+	}
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(response);
 }
+
 
 func main() {
 	http.HandleFunc("/", handler)
