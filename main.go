@@ -5,7 +5,6 @@ import (
 	"log"
 	"net/http"
 	"encoding/json"
-	"sync"
 	"github.com/devangb3/KV-Store/config"
 	"github.com/devangb3/KV-Store/database"
 	"github.com/joho/godotenv"
@@ -16,10 +15,6 @@ func handler(w http.ResponseWriter, r *http.Request) {
 	fmt.Fprintf(w, "Printing %s", r.URL.Path[1:])
 }
 
-var (
-	kvStore = make(map[string]string)
-	mu sync.RWMutex
-)
 type Server struct{
 	store *database.Store
 }
