@@ -6,6 +6,9 @@ import (
 	"net/http"
 	"encoding/json"
 	"sync"
+	"github.com/devangb3/KV-Store/config"
+	"github.com/devangb3/KV-Store/database"
+	"github.com/joho/godotenv"
 )
 
 func handler(w http.ResponseWriter, r *http.Request) {
@@ -112,9 +115,40 @@ func deleteKVStoreHandler(w http.ResponseWriter, r *http.Request){
 
 
 func main() {
-	http.HandleFunc("/", handler)
+	/* http.HandleFunc("/", handler)
 	http.HandleFunc("/put", putKvStoreHandler)
 	http.HandleFunc("/get", getKVStoreHandler)
-	http.HandleFunc("/delete", deleteKVStoreHandler)
-	log.Fatal(http.ListenAndServe(":8080", nil))
+	http.HandleFunc("/delete", deleteKVStoreHandler) */
+	err := godotenv.Load();
+	if err != nil{
+		log.Fatalf("error Loading env variables %v\n", err);
+		return;
+	}
+	cfg, err := config.LoadConfig();
+	if err != nil{
+		log.Fatalf("Error loading config %v\n", err)
+		return;
+	}
+	store,err := database.NewStore(*cfg);
+	if err != nil{
+		log.Fatalf("Error Creating New Store %v\n", err);
+		return;
+	}
+	defer store.Close();
+	log.Println("Inserting new record")
+	if err := store.InsertUser("Alice", "Wonderland"); err != nil{
+		log.Fatalf("Error Inserting User %v", err);
+	}
+	log.Println("Record Inserted successfully");
+
+	log.Println("Listing all Users")
+	users, err := store.GetUsers();
+	if err != nil{
+		log.Fatalf("Error Getting Users %v", err)
+		return;
+	}
+	for i := 0; i < len(users); i++ {
+		log.Printf("User %v : Id: %v Name: %v City: %v\n", i+1, users[i].ID, users[i].Name, users[i].City)
+	}
+	//log.Fatal(http.ListenAndServe(":8080", nil))
 }
