@@ -54,8 +54,7 @@ func(s *Server) putKvStoreHandler(w http.ResponseWriter, r *http.Request) {
 	}{
 		Value : fmt.Sprintf("Stored key %v successfully with value %v", data.Key, data.Value),
 	}
-	w.Header().Set("Content-Type", "application/json")
-	json.NewEncoder(w).Encode(response);
+	writeJsonResponse(w, response);
 }
 
 func(s *Server) getKVStoreHandler(w http.ResponseWriter, r *http.Request) {
@@ -78,8 +77,7 @@ func(s *Server) getKVStoreHandler(w http.ResponseWriter, r *http.Request) {
 	}{
 		Value: val,
 	}
-	w.Header().Set("Content-Type", "application/json")
-	json.NewEncoder(w).Encode(response);
+	writeJsonResponse(w, response);
 }
 
 func(s *Server) deleteKVStoreHandler(w http.ResponseWriter, r *http.Request){
@@ -108,15 +106,21 @@ func(s *Server) deleteKVStoreHandler(w http.ResponseWriter, r *http.Request){
 	}
 
 	log.Printf("Key Deleted successfully %v\n", data.Key);
+
 	response := struct {
-		Data string
+		Value string
 	}{
-		Data: "Deleted Successfully!",
+		Value: "Deleted Successfully!",
 	}
-	w.Header().Set("Content-Type", "application/json")
-	json.NewEncoder(w).Encode(response);
+	writeJsonResponse(w, response);
 }
 
+func writeJsonResponse(w http.ResponseWriter, response interface{}){
+	w.Header().Set("Content-Type", "application/json")
+	if err:= json.NewEncoder(w).Encode(response); err!= nil{
+		http.Error(w, "Error encoding JSON", http.StatusInternalServerError);
+	}
+}
 
 func main() {
 	
