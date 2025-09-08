@@ -20,8 +20,14 @@ var (
 	kvStore = make(map[string]string)
 	mu sync.RWMutex
 )
+type Server struct{
+	store *database.Store
+}
+func NewServer(store *database.Store) *Server{
+	return &Server{store:store};
+}
 
-func putKvStoreHandler(w http.ResponseWriter, r *http.Request) {
+func(s *Server) putKvStoreHandler(w http.ResponseWriter, r *http.Request) {
 	if r.Method != http.MethodPost{
 		http.Error(w, "Invalid method, only accepts POST requests", http.StatusMethodNotAllowed);
 		return;
@@ -40,9 +46,11 @@ func putKvStoreHandler(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "Either key or value is empty", http.StatusBadRequest);
 		return;
 	}
-	mu.Lock()
-	kvStore[data.Key] = data.Value;
-	mu.Unlock();
+	if err := s.store.InsertRecord(data.Key, data.Value); err!=nil{
+		log.Fatalf("Error while inserting record : %v\n", err);
+		http.Error(w, "Could not insert record", http.StatusBadRequest);
+		return;
+	}
 
 	log.Printf("Key : %v stored with value : %v", data.Key, data.Value)
 	
@@ -55,7 +63,7 @@ func putKvStoreHandler(w http.ResponseWriter, r *http.Request) {
 	json.NewEncoder(w).Encode(response);
 }
 
-func getKVStoreHandler(w http.ResponseWriter, r *http.Request) {
+func(s *Server) getKVStoreHandler(w http.ResponseWriter, r *http.Request) {
 	if r.Method != http.MethodGet{
 		http.Error(w,"Invalid method, only accepts GET requests", http.StatusMethodNotAllowed);
 		return;
@@ -64,10 +72,9 @@ func getKVStoreHandler(w http.ResponseWriter, r *http.Request) {
 	if key == ""{
 		http.Error(w, "Key parameter empty", http.StatusBadRequest);
 	}
-	mu.RLock();
-	val,ok := kvStore[key];
-	mu.RUnlock();
-	if !ok{
+	val,err := s.store.GetRecord(key);
+	if err != nil{
+		log.Fatalf("Error while getting key : %v", err)
 		http.Error(w,"{No record attached with key found}", http.StatusBadRequest);
 		return;
 	}
@@ -80,7 +87,7 @@ func getKVStoreHandler(w http.ResponseWriter, r *http.Request) {
 	json.NewEncoder(w).Encode(response);
 }
 
-func deleteKVStoreHandler(w http.ResponseWriter, r *http.Request){
+func(s *Server) deleteKVStoreHandler(w http.ResponseWriter, r *http.Request){
 	if r.Method != http.MethodDelete{
 		http.Error(w, "Invalid Request method", http.StatusMethodNotAllowed)
 		return;
@@ -97,13 +104,15 @@ func deleteKVStoreHandler(w http.ResponseWriter, r *http.Request){
 		http.Error(w, "Key cannot be empty", http.StatusBadRequest);
 		return;
 	}
-	log.Printf("Recieved delete request for key : ", data.Key);
+	log.Printf("Recieved delete request for key : %v\n", data.Key);
 
-	mu.Lock()
-	delete(kvStore, data.Key);
-	mu.Unlock()
+	if err := s.store.DeleteRecord(data.Key); err !=nil{
+		log.Fatalf("Error while deleting record: %v\n", err)
+		http.Error(w, "Error while deleting record", http.StatusBadRequest);
+		return;
+	}
 
-	log.Printf("Key Deleted successfully %v", data.Key);
+	log.Printf("Key Deleted successfully %v\n", data.Key);
 	response := struct {
 		Data string
 	}{
@@ -115,10 +124,7 @@ func deleteKVStoreHandler(w http.ResponseWriter, r *http.Request){
 
 
 func main() {
-	/* http.HandleFunc("/", handler)
-	http.HandleFunc("/put", putKvStoreHandler)
-	http.HandleFunc("/get", getKVStoreHandler)
-	http.HandleFunc("/delete", deleteKVStoreHandler) */
+	
 	err := godotenv.Load();
 	if err != nil{
 		log.Fatalf("error Loading env variables %v\n", err);
@@ -135,20 +141,13 @@ func main() {
 		return;
 	}
 	defer store.Close();
-	log.Println("Inserting new record")
-	if err := store.InsertUser("Alice", "Wonderland"); err != nil{
-		log.Fatalf("Error Inserting User %v", err);
-	}
-	log.Println("Record Inserted successfully");
 
-	log.Println("Listing all Users")
-	users, err := store.GetUsers();
-	if err != nil{
-		log.Fatalf("Error Getting Users %v", err)
-		return;
-	}
-	for i := 0; i < len(users); i++ {
-		log.Printf("User %v : Id: %v Name: %v City: %v\n", i+1, users[i].ID, users[i].Name, users[i].City)
-	}
-	//log.Fatal(http.ListenAndServe(":8080", nil))
+	server := NewServer(store);
+
+	http.HandleFunc("/", handler)
+	http.HandleFunc("/put", server.putKvStoreHandler)
+	http.HandleFunc("/get", server.getKVStoreHandler)
+	http.HandleFunc("/delete", server.deleteKVStoreHandler)
+	log.Println("Starting server on port 8080")
+	log.Fatal(http.ListenAndServe(":8080", nil))
 }
